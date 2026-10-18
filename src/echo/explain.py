@@ -27,3 +27,32 @@ def format_impact(result: ImpactResult) -> str:
                      f"(status: {a['status']}, owner: {owners})")
         lines.append(f"      evidence: {format_path(a['node_ids'], a['rels'])}")
     return "\n".join(lines)
+
+
+def format_memories(result) -> str:
+    """Text for a memory.MemoryResult (built only from the result data)."""
+    if result.status != "ok":
+        return f"{result.entity_id!r}: {result.message}"
+    lines = [f"{len(result.memories)} memor{'y' if len(result.memories) == 1 else 'ies'} about {result.entity_id}:"]
+    for m in result.memories:
+        who = ", ".join(f"{r['name'] or r['id']} ({r['type']})" for r in m["recorded_by"]) or "no recorder stored"
+        src = f", source: {m['source']}" if m["source"] else ""
+        lines.append(f"  [{m['kind']}] {m['id']} @ {m['recorded_at']} - {m['content']}")
+        lines.append(f"      recorded by: {who}{src}")
+        lines.append("      evidence: " + "; ".join(f"{a} -[{t}]-> {b}" for t, a, b in m["evidence"]))
+    return "\n".join(lines)
+
+
+def format_history(history) -> str:
+    """Text for a memory.DecisionHistory (built only from the result data)."""
+    if history.status not in ("ok", "no_history"):
+        return f"{history.decision_id!r}: {history.message}"
+    lines = [f"Decision history around {history.decision_id} (oldest -> newest):"]
+    for c in history.chain:
+        tag = "CURRENT" if c["is_current"] else c["status"]
+        lines.append(f"  {c['id']} [{tag}] {c['title']}" + (f" ({c['decided_at']})" if c["decided_at"] else ""))
+    if history.edges:
+        lines.append("  evidence: " + "; ".join(f"{a} -[{t}]-> {b}" for a, t, b in history.edges))
+    else:
+        lines.append(f"  {history.message}")
+    return "\n".join(lines)

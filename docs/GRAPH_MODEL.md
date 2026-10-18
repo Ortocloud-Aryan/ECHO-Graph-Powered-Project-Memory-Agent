@@ -77,3 +77,18 @@ Expected affected tasks (documented ground truth, also `echo.demo.EXPECTED`):
 NOT affected: task-api-schema, task-docs, task-branding, task-landing, other decisions.
 
 Reproduce: `python scripts/seed.py` then `python scripts/demo_impact.py` (prints the explanation, the Cypher, and PASS/MISMATCH).
+
+## Stage 3: persistent memory (src/echo/memory.py)
+**Direction convention (used everywhere):** `(newer:Decision)-[:SUPERSEDES]->(older:Decision)`; `(Memory)-[:ABOUT]->(subject)`; `(Memory|Decision)-[:RECORDED_BY]->(Agent|Person)` (only if a recorder is given - never invented); `(Task)-[:DEPENDS_ON]->(prerequisite)`; `(Decision)-[:AFFECTS]->(Task)`.
+
+Writes (raise `InvalidInput` / `EntityNotFound`, all MERGE-based and idempotent): `record_memory`, `record_decision`, `supersede_decision`, `link_depends_on`, `link_affects`. Validation order: input format -> endpoint exists -> endpoint type -> self/cycle check -> write. Self-supersession, SUPERSEDES/DEPENDS_ON cycles, wrong types and missing endpoints are rejected. `record_memory` derives a stable id from (subject, kind, content) unless `memory_id` is given; `recorded_at` is set once. `record_decision` leaves `status` unchanged on re-record; `supersede_decision` marks the old decision `superseded` and keeps both nodes.
+
+Reads (return a result with `status`): `get_memories_about(entity_id, kind=None, limit=50)` -> `ok | no_memories | not_found | invalid_input`, oldest first by `(recorded_at, id)`, each memory with its evidence edges. `get_decision_history(decision_id)` -> `ok | no_history | not_found | not_a_decision | invalid_input`: the supersession line through that decision (older + newer, up to 20 hops), oldest first, `is_current` = nothing supersedes it, plus the real SUPERSEDES edges.
+
+```cypher
+MATCH (m:Memory)-[:ABOUT]->(s {id: $id}) OPTIONAL MATCH (m)-[:RECORDED_BY]->(r)
+WITH m, s, collect(r) AS recs RETURN m.id, m.content, ... ORDER BY m.recorded_at, m.id LIMIT $limit
+MATCH p = (:Decision {id: $id})-[:SUPERSEDES*1..20]->(o:Decision) WITH o, min(length(p)) AS dist RETURN ...   -- older
+MATCH p = (w:Decision)-[:SUPERSEDES*1..20]->(:Decision {id: $id}) WITH w, min(length(p)) AS dist RETURN ...   -- newer
+```
+Test/demo isolation: `dataset=` tags nodes created by the API so `delete_dataset()` removes only that data. Demo ids: prefix `m3demo-`, dataset `synthetic-memory-demo`.
