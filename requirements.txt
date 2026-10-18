@@ -1,0 +1,5 @@
+falkordb>=1.8,<2
+streamlit>=1.40
+python-dotenv>=1.0
+pytest>=8.0
+# LLM SDK added in Stage 5 once the provider is confirmed
